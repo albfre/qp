@@ -31,7 +31,6 @@ namespace {
 
   void solveLinearSystemOfEquations_(const std::vector<std::vector<double>>& A, std::vector<double>& b)
   {
-
     const auto n = b.size();
     assert(A.size() == n);
     std::vector<double> ArowMajor(n * n);
@@ -88,7 +87,7 @@ namespace {
   }
 
   template<typename Op>
-  void vectorOpEqVector(Vector& r, const Vector& v, const Op& op) {
+  void vectorEqOpSelfVector(Vector& r, const Vector& v, const Op& op) {
     const auto size = r.size();
     assert(v.size() == size);
     for (size_t i = 0; i < size; ++i) {
@@ -122,8 +121,8 @@ namespace {
     const auto ySize = y.size();
     Vector rp(ySize);
     matrixTimesVector(A, x, rp);
-    vectorOpEqVector(rp, y, std::minus<double>());
-    vectorOpEqVector(rp, b, std::minus<double>());
+    vectorEqOpSelfVector(rp, y, std::minus<double>());
+    vectorEqOpSelfVector(rp, b, std::minus<double>());
     return rp;
   }
 
@@ -134,12 +133,12 @@ namespace {
     matrixTimesVector(H, x, rd);
     Vector ATLambda(xSize);
     matrixTimesVector(AT, lambda, ATLambda);
-    vectorOpEqVector(rd, ATLambda, std::minus<double>());
-    vectorOpEqVector(rd, g, std::plus<double>());
+    vectorEqOpSelfVector(rd, ATLambda, std::minus<double>());
+    vectorEqOpSelfVector(rd, g, std::plus<double>());
     return rd;
   }
 
-  // M = [H A'; A Linv * Y]; update Linv * Y
+  // For matrix M = [H A'; A Linv * Y], update Linv * Y
   void updateMatrix(Matrix& M, const Vector& lambda, const Vector& y) {
     const auto size = M.size();
     const auto ySize = y.size();
@@ -167,12 +166,11 @@ namespace {
     const auto ySize = y.size();
     const auto size = xSize + ySize;
 
+    updateMatrix(M, lambda, y);
     const auto rd = computeRd(H, AT, x, lambda, g);
     const auto rp = computeRp(A, x, y, b);
     auto rpPlusY = rp;
-    vectorOpEqVector(rpPlusY, y, std::plus<double>());
-
-    updateMatrix(M, lambda, y);
+    vectorEqOpSelfVector(rpPlusY, y, std::plus<double>());
 
     Vector rhs(size);
     for (size_t i = 0; i < xSize; ++i) {
@@ -182,44 +180,36 @@ namespace {
       rhs[xSize + i] = -rpPlusY[i] + mu / lambda[i];
     }
 
+    // Compute dx, dlambda from M [dx; dlambda] = [-rd; -rp - y + mu./lambda]
     solveLinearSystemOfEquations_(M, rhs);
     Vector dx(rhs.begin(), rhs.begin() + xSize);
     Vector dlambda(rhs.begin() + xSize, rhs.end());
 
+    // Compute dy = A dx + rp
     Vector dy(ySize);
     matrixTimesVector(A, dx, dy);
-    vectorOpEqVector(dy, rp, std::plus<double>());
+    vectorEqOpSelfVector(dy, rp, std::plus<double>());
 
     return std::make_tuple(dx, dy, dlambda);
   }
 
-  double lineSearch(const Vector& y, const Vector& dy, const Vector& lambda, const Vector& dlambda, const double tau) {
+  double lineSearch(const Vector& y, const Vector& dy, const Vector& lambda, const Vector& dlambda) {
     auto size = y.size();
     assert(dy.size() == size);
     assert(lambda.size() == size);
     assert(dlambda.size() == size);
 
-    auto notFound = true;
     auto alpha = 1.0;
-    while ( notFound ) {
-      notFound = false;
-      for (size_t i = 0; i < y.size(); ++i) {
-        if (y[i] + alpha * dy[i] < tau * y[i] ||
-            lambda[i] + alpha * dlambda[i] < tau * lambda[i]) {
-          notFound = true;
-          break;
-        }
+    for (size_t i = 0; i < y.size(); ++i) {
+      if (dy[i] < 0.0) {
+        alpha = std::min(alpha, -y[i]/dy[i]);
       }
-      if (notFound) {
-        alpha /= 2.0;
+      if (dlambda[i] < 0.0) {
+        alpha = std::min(alpha, -lambda[i]/dlambda[i]);
       }
-      if (alpha < 1e-15) {
-        print( y );
-        print( dy );
-        print( lambda );
-        print( dlambda );
-        assert( false );
-      }
+    }
+    if (alpha < 1e-15) {
+      assert( false );
     }
     return alpha;
   }
@@ -238,7 +228,6 @@ QP::Solution QP::solveQP(const Matrix& H,
                          const Vector& b)
 {
   Solution solution;
-  const auto tau = 0.01;
 
   // Preconditions
   const auto xSize = g.size();
@@ -273,13 +262,15 @@ QP::Solution QP::solveQP(const Matrix& H,
   matrixEqOpMatrixWithOffset(M, AT, 0, xSize, negate);
   matrixEqOpMatrixWithOffset(M, A, xSize, 0, identity);
 
-  // Initialize x, y, lambda, mu
+  // Initialize x, y, lambda
   Vector x(xSize, 1.0);
+  // y = Ax - b
   Vector Ax(ySize);
   matrixTimesVector(A, x, Ax);
   auto y = Ax;
-  vectorOpEqVector(y, b, std::minus<double>());
-  Vector lambda(ySize, 0.5);
+  vectorEqOpSelfVector(y, b, std::minus<double>());
+  vectorEqOpSelfVector(y, y, [] (const auto& a, const auto& b) { return std::max(1e-3, b); });
+  Vector lambda(ySize, 1.0);
   Vector yAff(ySize);
   Vector lambdaAff(ySize);
   Vector prevX(xSize);
@@ -291,12 +282,12 @@ QP::Solution QP::solveQP(const Matrix& H,
     yAff = y;
     lambdaAff = lambda;
     const auto [_, dyAff, dlambdaAff] = computeSearchDirection(M, H, g, A, AT, b, x, y, lambda, 0.0);
-    const auto alphaAff = lineSearch(y, dyAff, lambda, dlambdaAff, 0.0);
+    const auto alphaAff = lineSearch(y, dyAff, lambda, dlambdaAff);
 
     // Update yAff, lambdaAff
     const auto scalarAddAff = [alphaAff] (const auto& r, const auto& v) { return r + alphaAff * v; };
-    vectorOpEqVector(yAff, dyAff, scalarAddAff);
-    vectorOpEqVector(lambdaAff, dlambdaAff, scalarAddAff );
+    vectorEqOpSelfVector(yAff, dyAff, scalarAddAff);
+    vectorEqOpSelfVector(lambdaAff, dlambdaAff, scalarAddAff );
     const auto muAff = dot(yAff, lambdaAff) / ySize;
 
     // Compute centralizing step
@@ -304,19 +295,17 @@ QP::Solution QP::solveQP(const Matrix& H,
     const auto div = muAff / mu;
     const auto sigma = div * div * div;
     const auto [dx, dy, dlambda] = computeSearchDirection(M, H, g, A, AT, b, x, y, lambda, sigma * mu);
-    const auto alpha = lineSearch(y, dy, lambda, dlambda, tau);
+    const auto alpha = lineSearch(y, dy, lambda, dlambda);
 
     // Update x, y, lambda
     const auto scalarAdd = [alpha] (const auto& r, const auto& v) { return r + alpha * v; };
-    vectorOpEqVector(x, dx, scalarAdd);
-    vectorOpEqVector(y, dy, scalarAdd);
-    vectorOpEqVector(lambda, dlambda, scalarAdd);
+    vectorEqOpSelfVector(x, dx, scalarAdd);
+    vectorEqOpSelfVector(y, dy, scalarAdd);
+    vectorEqOpSelfVector(lambda, dlambda, scalarAdd);
 
     std::cout << k << ". alphaAff: " << alphaAff << ", alpha: " << alpha << ", obj: " << objectiveValue(H, g, x) << std::endl;
-    auto diff = 0.0;
-    for (size_t i = 0; i < xSize; ++i) {
-      diff += std::fabs(x[i] - prevX[i]);
-    }
+    const auto diff = std::inner_product(x.cbegin(), x.cend(), prevX.cbegin(), 0.0, std::plus<double>(),
+                                         [](const auto& a, const auto& b) { return std::fabs(a - b); });
     if (diff < 1e-12) {
       break;
     }

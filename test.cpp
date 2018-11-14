@@ -18,10 +18,12 @@ int main( int argc, const char* argv[] )
   QP::Matrix A(ySize, QP::Vector(xSize));
   QP::Vector b(ySize);
   for (size_t i = 0; i < ySize; ++i) {
-    A[i][i] = 1.0;
+    A[i][i] = -2.0;
+    A[i][i + 1] = -1.0;
     b[i] = 0.2;
   }
   const auto s = QP::solveQP(H, g, A, b);
+  std::cout << "Objective value: " << s.objectiveValue << std::endl;
   for (const auto& xi : s.x) {
     std::cout << xi << ", ";
   }
