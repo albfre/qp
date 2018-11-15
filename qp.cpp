@@ -1,11 +1,5 @@
 #include <iostream>
-#include <vector>
-#include <cassert>
-#include <ctime>
 #include <cmath>
-#include <numeric>
-#include <functional>
-#include <sstream>
 #include <tuple>
 
 #include "qp.h"
