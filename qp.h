@@ -1,18 +1,16 @@
 #ifndef QP_H
 #define QP_H
 
-#include <algorithm>
-#include <memory>
-#include <vector>
+#include "MathUtil.h"
 
 namespace QP {
+  using Vector = MathUtil::Vector;
+  using Matrix = MathUtil::Matrix;
+
   struct Solution {
     double objectiveValue;
-    std::vector<double> x;
+    Vector x;
   };
-
-  using Matrix = std::vector<std::vector<double>>;
-  using Vector = std::vector<double>;
 
   double objectiveValue(const Matrix& H,
                         const Vector& g,

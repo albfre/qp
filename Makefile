@@ -1,15 +1,19 @@
 CC = g++
-CFLAGS = -g -funroll-loops -std=c++17 -O2 -Wall -pedantic -llapack
+CFLAGS = -g -std=c++17 -O2 -Wall -pedantic -llapack
 FILE = qp
 SRCS = $(FILE).h $(FILE).cpp
-OBJS = $(FILE).o
+OBJS = $(FILE).o MathUtil.o
+MATH = MathUtil.h MathUtil.cpp
 TEST = test
 TESTSRC = $(TEST).cpp
 
 all: product test
 
 product: $(SRCS) \
-; $(CC) $(CFLAGS) -c $(SRCS)
+; $(CC) $(CFLAGS) -c $(MATH) $(SRCS)
+
+math: $(MATH) \
+; $(CC) $(CFLAGS) -c $(MATH)
 
 test: $(TESTSRC) \
 ; $(CC) $(CFLAGS) -o $(TEST) $(TESTSRC) $(OBJS)
