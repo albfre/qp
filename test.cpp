@@ -3,7 +3,7 @@
 #include <iomanip>
 #include <iostream>
 #include <sstream>
-#include "qp.h"
+#include "QP.h"
 #include "MathUtil.h"
 
 void print(const MathUtil::Vector& x) {

@@ -1,0 +1,5 @@
+QP
+
+Primal-dual interior point method quadratic programming problem solver using predictor-corrector steps.
+
+Uses Lapack for solving linear systems of equations.

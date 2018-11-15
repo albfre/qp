@@ -1,6 +1,6 @@
 CC = g++
 CFLAGS = -g -std=c++17 -O2 -Wall -pedantic -llapack
-FILE = qp
+FILE = QP
 SRCS = $(FILE).h $(FILE).cpp
 OBJS = $(FILE).o MathUtil.o
 MATH = MathUtil.h MathUtil.cpp

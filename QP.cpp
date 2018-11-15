@@ -2,7 +2,7 @@
 #include <cmath>
 #include <tuple>
 
-#include "qp.h"
+#include "QP.h"
 
 namespace {
   using Vector = MathUtil::Vector;
