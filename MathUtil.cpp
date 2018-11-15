@@ -14,6 +14,14 @@ namespace MathUtil {
     // Solve Ax = b using LU factorization
     // (TRANS, N, NRHS, A, LDA, IPIV, B, LDB, INFO)
     extern int dgetrs_(char*, int*, int*, double*, int*, int*, double*, int*, int*);
+
+    // Cholesky factorize
+    // (UPLO, N, A, LDA, INFO)
+    extern int dpotrf_(char*, int*, double*, int*, int*);
+
+    // Solve Ax = b using Cholesky factorization
+    // (UPLO, N, NRHS, A, LDA, B, LDB, INFO)
+    extern int dpotrs_(char*, int*, int*, double*, int*, double*, int*, int*);
   }
 
   void solveLinearSystemOfEquations(const Matrix& A, Vector& b)
@@ -81,6 +89,49 @@ namespace MathUtil {
     // solve Ax = b
     dgetrs_(&T, &N, &nrhs, LUcopy.data(), &N, p.data(), b.data(), &N, &info);
     assert(LUcopy == LU);
+
+    if (info != 0) {
+      std::cout << "Error: dgetrs returned error code " << info << std::endl;
+      return;
+    }
+  }
+
+  void choleskyFactorize(const Matrix& A, Vector& cholesky) {
+    const auto n = A.size();
+    // Copy A to cholesky in row major format
+    cholesky.resize(n * n);
+    for (size_t i = 0; i < n; ++i) {
+      assert(A[i].size() == n);
+      for (size_t j = 0; j < n; ++j) {
+        cholesky[j * n + i] = A[i][j];
+      }
+    }
+    char UPLO = 'U';
+    int N = static_cast<int>(n);
+    int info = 1;
+
+    // factorize A
+    dpotrf_(&UPLO, &N, cholesky.data(), &N, &info);
+    if (info != 0) {
+      std::cout << "Error: dpotrf returned error code " << info << std::endl;
+      return;
+    }
+  }
+
+  void solveLinearSystemOfEquationsUsingCholesky(const Vector& cholesky, Vector& b) {
+    const auto n = b.size();
+    assert(cholesky.size() == n * n);
+
+    // allocate data
+    char UPLO = 'U';
+    int N = static_cast<int>(n);
+    int nrhs = 1;
+    int info = 1;
+    auto choleskyCopy = cholesky;
+
+    // solve Ax = b
+    dpotrs_(&UPLO, &N, &nrhs, choleskyCopy.data(), &N, b.data(), &N, &info);
+    assert(choleskyCopy == cholesky);
 
     if (info != 0) {
       std::cout << "Error: dgetrs returned error code " << info << std::endl;

@@ -12,19 +12,22 @@ namespace MathUtil {
   void solveLinearSystemOfEquations(const Matrix& A, Vector& b);
   void luFactorize(const Matrix& A, Vector& LU, std::vector<int>& piv);
   void solveLinearSystemOfEquationsUsingLU(const Vector& LU, const std::vector<int>& piv, Vector& b);
+  void choleskyFactorize(const Matrix& A, Vector& cholesky);
+  void solveLinearSystemOfEquationsUsingCholesky(const Vector& cholesky, Vector& b);
 
   inline double dot(const Vector& a, const Vector& b) {
     assert(a.size() == b.size());
     return std::inner_product(a.cbegin(), a.cend(), b.cbegin(), 0.0);
   }
 
-  inline void matrixTimesVector(const Matrix& m, const Vector& v, Vector& r)
+  inline Vector matrixTimesVector(const Matrix& m, const Vector& v)
   {
     const auto size = m.size();
-    assert(r.size() == size);
+    Vector r(size);
     for (size_t i = 0; i < size; ++i) {
       r[i] = dot(m[i], v);
     }
+    return r;
   }
 
   Matrix matrixTranspose(const Matrix& m);

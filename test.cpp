@@ -17,10 +17,10 @@ void print(const MathUtil::Vector& x) {
 
 int main( int argc, const char* argv[] )
 {
-  const size_t xSize = 1000;
-  const size_t ySize = 200;
+  const size_t xSize = 100;
+  const size_t ySize = 20;
   MathUtil::Matrix H(xSize, MathUtil::Vector(xSize));
-  MathUtil::Vector g(xSize);
+  MathUtil::Vector g(xSize, 1);
   for (size_t i = 0; i < xSize; ++i) {
     H[i][i] = 1.0;
   }

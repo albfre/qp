@@ -16,9 +16,7 @@ namespace {
 
   // rp = Ax - y - b
   Vector computeRp(const Matrix& A, const Vector& x, const Vector& y, const Vector& b) {
-    const auto ySize = y.size();
-    Vector rp(ySize);
-    MathUtil::matrixTimesVector(A, x, rp);
+    auto rp = MathUtil::matrixTimesVector(A, x);
     MathUtil::vectorMinusEqVector(rp, y);
     MathUtil::vectorMinusEqVector(rp, b);
     return rp;
@@ -26,11 +24,8 @@ namespace {
 
   // rd = Hx - A' lambda + g
   Vector computeRd(const Matrix& H, const Matrix& AT, const Vector& x, const Vector& lambda, const Vector& g) {
-    const auto xSize = x.size();
-    Vector rd(xSize);
-    MathUtil::matrixTimesVector(H, x, rd);
-    Vector ATLambda(xSize);
-    MathUtil::matrixTimesVector(AT, lambda, ATLambda);
+    auto rd = MathUtil::matrixTimesVector(H, x);
+    const auto ATLambda = MathUtil::matrixTimesVector(AT, lambda);
     MathUtil::vectorMinusEqVector(rd, ATLambda);
     MathUtil::vectorPlusEqVector(rd, g);
     return rd;
@@ -50,22 +45,16 @@ namespace {
     }
   }
 
-  auto computeSearchDirection(Matrix& M,
+  auto computeSearchDirection(const Matrix& M,
                               const Vector& LU,
                               const std::vector<int>& piv,
-                              const Matrix& H,
-                              const Vector& g,
+                              const Vector& rd,
+                              const Vector& rp,
                               const Matrix& A,
-                              const Matrix& AT,
-                              const Vector& b,
-                              const Vector& x,
                               const Vector& y,
                               const Vector& lambda,
                               const double mu) {
-    const auto rd = computeRd(H, AT, x, lambda, g);
-    const auto rp = computeRp(A, x, y, b);
-
-    const auto xSize = x.size();
+    const auto xSize = rd.size();
     Vector rhs(xSize);
     MathUtil::vectorMinusEqVector(rhs, rd);
     Vector rhs2 = rp;
@@ -75,13 +64,11 @@ namespace {
 
     // Compute dx, dlambda from M [dx; dlambda] = [-rd; -rp - y + mu./lambda]
     MathUtil::solveLinearSystemOfEquationsUsingLU(LU, piv, rhs);
-    //MathUtil::solveLinearSystemOfEquations(M, rhs);
     Vector dx(rhs.begin(), rhs.begin() + xSize);
     Vector dlambda(rhs.begin() + xSize, rhs.end());
 
     // Compute dy = A dx + rp
-    Vector dy(y.size());
-    MathUtil::matrixTimesVector(A, dx, dy);
+    auto dy = MathUtil::matrixTimesVector(A, dx);
     MathUtil::vectorPlusEqVector(dy, rp);
 
     return std::make_tuple(dx, dy, dlambda);
@@ -111,8 +98,7 @@ namespace {
 
 double QP::objectiveValue(const Matrix& H, const Vector& g, const Vector& x)
 {
-  Vector Hx(x.size());
-  MathUtil::matrixTimesVector(H, x, Hx);
+  const auto Hx = MathUtil::matrixTimesVector(H, x);
   return 0.5 * MathUtil::dot(Hx, x) + MathUtil::dot(g, x);
 }
 
@@ -159,14 +145,9 @@ QP::Solution QP::solveQP(const Matrix& H,
   // Initialize x, y, lambda
   Vector x(xSize, 1.0);
   // y = Ax - b
-  Vector Ax(ySize);
-  MathUtil::matrixTimesVector(A, x, Ax);
-  auto y = Ax;
-  MathUtil::vectorMinusEqVector(y, b);
+  auto y = computeRp(A, x, Vector(ySize), b);
   MathUtil::vectorEqOpSelfVector(y, y, [] (const auto& a, const auto& b) { return std::max(1e-3, b); });
   Vector lambda(ySize, 1.0);
-  Vector yAff(ySize);
-  Vector lambdaAff(ySize);
   Vector prevX(xSize);
   Vector LU(size * size);
   std::vector<int> piv(size);
@@ -176,22 +157,24 @@ QP::Solution QP::solveQP(const Matrix& H,
     prevX = x;
     updateMatrix(M, lambda, y);
     MathUtil::luFactorize(M, LU, piv);
+    const auto rd = computeRd(H, AT, x, lambda, g);
+    const auto rp = computeRp(A, x, y, b);
 
     // Compute affine scaling step
-    yAff = y;
-    lambdaAff = lambda;
-    const auto [_, dyAff, dlambdaAff] = computeSearchDirection(M, LU, piv, H, g, A, AT, b, x, y, lambda, 0.0);
+    const auto [_, dyAff, dlambdaAff] = computeSearchDirection(M, LU, piv, rd, rp, A, y, lambda, 0.0);
     const auto alphaAff = lineSearch(y, dyAff, lambda, dlambdaAff);
 
-    // Update yAff, lambdaAff
+    // Compute yAff, lambdaAff
+    auto yAff = y;
+    auto lambdaAff = lambda;
     MathUtil::vectorPlusEqScalarTimesVector(yAff, alphaAff, dyAff);
     MathUtil::vectorPlusEqScalarTimesVector(lambdaAff, alphaAff, dlambdaAff);
     const auto muAff = MathUtil::dot(yAff, lambdaAff) / ySize;
 
     // Compute centralizing step
     const auto mu = MathUtil::dot(y, lambda) / ySize;
-    const auto sigma = std::pow(muAff / mu, 3.0);
-    const auto [dx, dy, dlambda] = computeSearchDirection(M, LU, piv, H, g, A, AT, b, x, y, lambda, sigma * mu);
+    const auto sigma = std::pow(muAff / mu, 3.0); // Mehrotra heuristic
+    const auto [dx, dy, dlambda] = computeSearchDirection(M, LU, piv, rd, rp, A, y, lambda, sigma * mu);
     const auto alpha = fractionToBoundary * lineSearch(y, dy, lambda, dlambda);
 
     // Update x, y, lambda
@@ -202,7 +185,7 @@ QP::Solution QP::solveQP(const Matrix& H,
     std::cout << k << ". alphaAff: " << alphaAff << ", alpha: " << alpha << ", obj: " << objectiveValue(H, g, x) << std::endl;
     const auto diff = std::inner_product(x.cbegin(), x.cend(), prevX.cbegin(), 0.0, std::plus<double>(),
                                          [](const auto& a, const auto& b) { return std::fabs(a - b); });
-    if (diff < 1e-12) {
+    if (diff < 1e-13) {
       break;
     }
   }
