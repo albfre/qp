@@ -17,8 +17,8 @@ void print(const MathUtil::Vector& x) {
 
 int main( int argc, const char* argv[] )
 {
-  const size_t xSize = 10;
-  const size_t ySize = 1;
+  const size_t xSize = 1000;
+  const size_t ySize = 200;
   MathUtil::Matrix H(xSize, MathUtil::Vector(xSize));
   MathUtil::Vector g(xSize);
   for (size_t i = 0; i < xSize; ++i) {
@@ -33,7 +33,7 @@ int main( int argc, const char* argv[] )
     b[i] = 0.2;
   }
   const auto s = QP::solveQP(H, g, A, b);
-  std::cout << "Objective value: " << s.objectiveValue << std::endl;
   print(s.x);
+  std::cout << "Objective value: " << s.objectiveValue << std::endl;
   return 0;
 }

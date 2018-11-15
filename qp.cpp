@@ -13,6 +13,7 @@
 namespace {
   using Vector = MathUtil::Vector;
   using Matrix = MathUtil::Matrix;
+
   // rp = Ax - y - b
   Vector computeRp(const Matrix& A, const Vector& x, const Vector& y, const Vector& b) {
     const auto ySize = y.size();
@@ -50,6 +51,8 @@ namespace {
   }
 
   auto computeSearchDirection(Matrix& M,
+                              const Vector& LU,
+                              const std::vector<int>& piv,
                               const Matrix& H,
                               const Vector& g,
                               const Matrix& A,
@@ -59,31 +62,25 @@ namespace {
                               const Vector& y,
                               const Vector& lambda,
                               const double mu) {
-    const auto xSize = x.size();
-    const auto ySize = y.size();
-    const auto size = xSize + ySize;
-
-    updateMatrix(M, lambda, y);
     const auto rd = computeRd(H, AT, x, lambda, g);
     const auto rp = computeRp(A, x, y, b);
-    auto rpPlusY = rp;
-    MathUtil::vectorPlusEqVector(rpPlusY, y);
 
-    Vector rhs(size);
-    for (size_t i = 0; i < xSize; ++i) {
-      rhs[i] = -rd[i];
-    }
-    for (size_t i = 0; i < ySize; ++i) {
-      rhs[xSize + i] = -rpPlusY[i] + mu / lambda[i];
-    }
+    const auto xSize = x.size();
+    Vector rhs(xSize);
+    MathUtil::vectorMinusEqVector(rhs, rd);
+    Vector rhs2 = rp;
+    MathUtil::vectorPlusEqVector(rhs2, y);
+    MathUtil::vectorEqOpSelfVector(rhs2, lambda, [mu] (const auto& r, const auto& l) { assert(l > 0.0); return -r + mu / l; } );
+    rhs.insert(rhs.end(), rhs2.cbegin(), rhs2.cend());
 
     // Compute dx, dlambda from M [dx; dlambda] = [-rd; -rp - y + mu./lambda]
-    MathUtil::solveLinearSystemOfEquations(M, rhs);
+    MathUtil::solveLinearSystemOfEquationsUsingLU(LU, piv, rhs);
+    //MathUtil::solveLinearSystemOfEquations(M, rhs);
     Vector dx(rhs.begin(), rhs.begin() + xSize);
     Vector dlambda(rhs.begin() + xSize, rhs.end());
 
     // Compute dy = A dx + rp
-    Vector dy(ySize);
+    Vector dy(y.size());
     MathUtil::matrixTimesVector(A, dx, dy);
     MathUtil::vectorPlusEqVector(dy, rp);
 
@@ -171,15 +168,19 @@ QP::Solution QP::solveQP(const Matrix& H,
   Vector yAff(ySize);
   Vector lambdaAff(ySize);
   Vector prevX(xSize);
+  Vector LU(size * size);
+  std::vector<int> piv(size);
   const auto fractionToBoundary = 0.99;
 
   for (size_t k = 0; k < 50; ++k ) {
     prevX = x;
+    updateMatrix(M, lambda, y);
+    MathUtil::luFactorize(M, LU, piv);
 
     // Compute affine scaling step
     yAff = y;
     lambdaAff = lambda;
-    const auto [_, dyAff, dlambdaAff] = computeSearchDirection(M, H, g, A, AT, b, x, y, lambda, 0.0);
+    const auto [_, dyAff, dlambdaAff] = computeSearchDirection(M, LU, piv, H, g, A, AT, b, x, y, lambda, 0.0);
     const auto alphaAff = lineSearch(y, dyAff, lambda, dlambdaAff);
 
     // Update yAff, lambdaAff
@@ -190,7 +191,7 @@ QP::Solution QP::solveQP(const Matrix& H,
     // Compute centralizing step
     const auto mu = MathUtil::dot(y, lambda) / ySize;
     const auto sigma = std::pow(muAff / mu, 3.0);
-    const auto [dx, dy, dlambda] = computeSearchDirection(M, H, g, A, AT, b, x, y, lambda, sigma * mu);
+    const auto [dx, dy, dlambda] = computeSearchDirection(M, LU, piv, H, g, A, AT, b, x, y, lambda, sigma * mu);
     const auto alpha = fractionToBoundary * lineSearch(y, dy, lambda, dlambda);
 
     // Update x, y, lambda

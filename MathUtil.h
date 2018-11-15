@@ -10,6 +10,8 @@ namespace MathUtil {
   using Matrix = std::vector<Vector>;
 
   void solveLinearSystemOfEquations(const Matrix& A, Vector& b);
+  void luFactorize(const Matrix& A, Vector& LU, std::vector<int>& piv);
+  void solveLinearSystemOfEquationsUsingLU(const Vector& LU, const std::vector<int>& piv, Vector& b);
 
   inline double dot(const Vector& a, const Vector& b) {
     assert(a.size() == b.size());
