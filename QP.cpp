@@ -1,31 +1,33 @@
-#include <iostream>
 #include <cmath>
+#include <functional>
+#include <iostream>
 #include <tuple>
 
 #include "QP.h"
+#include "LinearSolver.h"
 
 namespace {
   using Vector = MathUtil::Vector;
   using Matrix = MathUtil::Matrix;
 
-  // rp = Ax - y - b
-  Vector computeRp(const Matrix& A, const Vector& x, const Vector& y, const Vector& b) {
-    auto rp = MathUtil::matrixTimesVector(A, x);
-    MathUtil::vectorMinusEqVector(rp, y);
-    MathUtil::vectorMinusEqVector(rp, b);
-    return rp;
+  // rA = Ax - y - b
+  Vector computeRA(const Matrix& A, const Vector& x, const Vector& y, const Vector& b) {
+    auto rA = MathUtil::matrixTimesVector(A, x);
+    MathUtil::vectorMinusEqVector(rA, y);
+    MathUtil::vectorMinusEqVector(rA, b);
+    return rA;
   }
 
-  // rd = Hx - A' lambda + g
-  Vector computeRd(const Matrix& H, const Matrix& AT, const Vector& x, const Vector& lambda, const Vector& g) {
-    auto rd = MathUtil::matrixTimesVector(H, x);
+  // rQ = Qx - A' lambda + c
+  Vector computeRQ(const Matrix& H, const Matrix& AT, const Vector& x, const Vector& lambda, const Vector& g) {
+    auto rQ = MathUtil::matrixTimesVector(H, x);
     const auto ATLambda = MathUtil::matrixTimesVector(AT, lambda);
-    MathUtil::vectorMinusEqVector(rd, ATLambda);
-    MathUtil::vectorPlusEqVector(rd, g);
-    return rd;
+    MathUtil::vectorMinusEqVector(rQ, ATLambda);
+    MathUtil::vectorPlusEqVector(rQ, g);
+    return rQ;
   }
 
-  // For matrix M = [H A'; A Linv * Y], update Linv * Y
+  // For matrix M = [H A'; A -Linv * Y], update -Linv * Y
   void updateMatrix(Matrix& M, const Vector& lambda, const Vector& y) {
     const auto size = M.size();
     const auto ySize = y.size();
@@ -35,35 +37,36 @@ namespace {
     for (size_t i = 0; i < ySize; ++i) {
       const auto l = lambda[i];
       assert(l > 0.0);
-      M[xSize + i][xSize + i] = y[i] / l;
+      M[xSize + i][xSize + i] = -y[i] / l;
     }
   }
 
   auto computeSearchDirection(const Matrix& M,
-                              const Vector& LU,
+                              const Vector& factorization,
                               const std::vector<int>& piv,
-                              const Vector& rd,
-                              const Vector& rp,
+                              const Vector& rQ,
+                              const Vector& rA,
                               const Matrix& A,
                               const Vector& y,
                               const Vector& lambda,
                               const double mu) {
-    const auto xSize = rd.size();
+    const auto xSize = rQ.size();
     Vector rhs(xSize);
-    MathUtil::vectorMinusEqVector(rhs, rd);
-    Vector rhs2 = rp;
+    MathUtil::vectorMinusEqVector(rhs, rQ);
+    Vector rhs2 = rA;
     MathUtil::vectorPlusEqVector(rhs2, y);
     MathUtil::vectorEqOpSelfVector(rhs2, lambda, [mu] (const auto& r, const auto& l) { assert(l > 0.0); return -r + mu / l; } );
     rhs.insert(rhs.end(), rhs2.cbegin(), rhs2.cend());
 
-    // Compute dx, dlambda from M [dx; dlambda] = [-rd; -rp - y + mu./lambda]
-    MathUtil::solveLinearSystemOfEquationsUsingLU(LU, piv, rhs);
+    // Compute dx, dlambda from M [dx; -dlambda] = [-rQ; -rA - y + mu./lambda]
+    LinearSolver::solveLinearSystemOfEquationsSymmetricIndefinite(factorization, piv, rhs);
     Vector dx(rhs.begin(), rhs.begin() + xSize);
     Vector dlambda(rhs.begin() + xSize, rhs.end());
+    std::transform(dlambda.cbegin(), dlambda.cend(), dlambda.begin(), std::negate<double>());
 
-    // Compute dy = A dx + rp
+    // Compute dy = A dx + rA
     auto dy = MathUtil::matrixTimesVector(A, dx);
-    MathUtil::vectorPlusEqVector(dy, rp);
+    MathUtil::vectorPlusEqVector(dy, rA);
 
     return std::make_tuple(dx, dy, dlambda);
   }
@@ -90,36 +93,36 @@ namespace {
   }
 }
 
-double QP::objectiveValue(const Matrix& H, const Vector& g, const Vector& x)
+double QP::objectiveValue(const Matrix& Q, const Vector& c, const Vector& x)
 {
-  const auto Hx = MathUtil::matrixTimesVector(H, x);
-  return 0.5 * MathUtil::dot(Hx, x) + MathUtil::dot(g, x);
+  const auto Qx = MathUtil::matrixTimesVector(Q, x);
+  return 0.5 * MathUtil::dot(Qx, x) + MathUtil::dot(c, x);
 }
 
-QP::Solution QP::solveQP(const Matrix& H,
-                         const Vector& g,
+QP::Solution QP::solveQP(const Matrix& Q,
+                         const Vector& c,
                          const Matrix& A,
                          const Vector& b)
 {
   Solution solution;
 
   // Preconditions
-  const auto xSize = g.size();
+  const auto xSize = c.size();
   const auto ySize = b.size();
-  assert(H.size() == xSize);
-  for (const auto& h : H) {
-    assert(h.size() == xSize);
-  }
-  for (const auto& a: A) {
-    assert(a.size() == xSize);
+  assert(Q.size() == xSize);
+  for (const auto& q : Q) {
+    assert(q.size() == xSize);
   }
   assert(A.size() == ySize);
+  for (const auto& a : A) {
+    assert(a.size() == xSize);
+  }
 
   // Handle unconstrained case
   if (ySize == 0) {
-    auto x = g;
-    MathUtil::solveLinearSystemOfEquations(H, x);
-    solution.objectiveValue = objectiveValue(H, g, x);
+    auto x = c;
+    LinearSolver::solveLinearSystemOfEquations(Q, x);
+    solution.objectiveValue = objectiveValue(Q, c, x);
     solution.x = x;
     return solution;
   }
@@ -130,32 +133,30 @@ QP::Solution QP::solveQP(const Matrix& H,
   // Set up augmented system M = [H A'; A 0] (M22 is updated when computing search direction)
   const auto size = xSize + ySize;
   Matrix M(size, Vector(size));
-  const auto identity = [](const auto& a) { return a; };
-  const auto negate = [](const auto& a) { return -a; };
-  MathUtil::matrixEqOpMatrixWithOffset(M, H, 0, 0, identity);
-  MathUtil::matrixEqOpMatrixWithOffset(M, AT, 0, xSize, negate);
-  MathUtil::matrixEqOpMatrixWithOffset(M, A, xSize, 0, identity);
+  MathUtil::matrixEqMatrixWithOffset(M, Q, 0, 0);
+  MathUtil::matrixEqMatrixWithOffset(M, AT, 0, xSize);
+  MathUtil::matrixEqMatrixWithOffset(M, A, xSize, 0);
 
   // Initialize x, y, lambda
   Vector x(xSize, 1.0);
   // y = Ax - b
-  auto y = computeRp(A, x, Vector(ySize), b);
+  auto y = computeRA(A, x, Vector(ySize), b);
   MathUtil::vectorEqOpSelfVector(y, y, [] (const auto& a, const auto& b) { return std::max(1e-3, b); });
   Vector lambda(ySize, 1.0);
   Vector prevX(xSize);
-  Vector LU(size * size);
+  Vector factorization(size * size);
   std::vector<int> piv(size);
   const auto fractionToBoundary = 0.99;
 
   for (size_t k = 0; k < 50; ++k ) {
     prevX = x;
     updateMatrix(M, lambda, y);
-    MathUtil::luFactorize(M, LU, piv);
-    const auto rd = computeRd(H, AT, x, lambda, g);
-    const auto rp = computeRp(A, x, y, b);
+    LinearSolver::factorizeSymmetricIndefinite(M, factorization, piv);
+    const auto rQ = computeRQ(Q, AT, x, lambda, c);
+    const auto rA = computeRA(A, x, y, b);
 
     // Compute affine scaling step
-    const auto [_, dyAff, dlambdaAff] = computeSearchDirection(M, LU, piv, rd, rp, A, y, lambda, 0.0);
+    const auto [_, dyAff, dlambdaAff] = computeSearchDirection(M, factorization, piv, rQ, rA, A, y, lambda, 0.0);
     const auto alphaAff = lineSearch(y, dyAff, lambda, dlambdaAff);
 
     // Compute yAff, lambdaAff
@@ -168,7 +169,7 @@ QP::Solution QP::solveQP(const Matrix& H,
     // Compute centralizing step
     const auto mu = MathUtil::dot(y, lambda) / ySize;
     const auto sigma = std::pow(muAff / mu, 3.0); // Mehrotra heuristic
-    const auto [dx, dy, dlambda] = computeSearchDirection(M, LU, piv, rd, rp, A, y, lambda, sigma * mu);
+    const auto [dx, dy, dlambda] = computeSearchDirection(M, factorization, piv, rQ, rA, A, y, lambda, sigma * mu);
     const auto alpha = fractionToBoundary * lineSearch(y, dy, lambda, dlambda);
 
     // Update x, y, lambda
@@ -176,15 +177,18 @@ QP::Solution QP::solveQP(const Matrix& H,
     MathUtil::vectorPlusEqScalarTimesVector(y, alpha, dy);
     MathUtil::vectorPlusEqScalarTimesVector(lambda, alpha, dlambda);
 
-    std::cout << k << ". alphaAff: " << alphaAff << ", alpha: " << alpha << ", obj: " << objectiveValue(H, g, x) << std::endl;
+    std::cout << k << ". alphaAff: " << alphaAff << ", alpha: " << alpha << ", obj: " << objectiveValue(Q, c, x) << std::endl;
     const auto diff = std::inner_product(x.cbegin(), x.cend(), prevX.cbegin(), 0.0, std::plus<double>(),
                                          [](const auto& a, const auto& b) { return std::fabs(a - b); });
-    if (diff < 1e-13) {
+    if (diff < 1e-12) {
       break;
     }
   }
 
   solution.x = x;
-  solution.objectiveValue = objectiveValue(H, g, x);
+  solution.objectiveValue = objectiveValue(Q, c, x);
+  y = computeRA(A, x, Vector(ySize), b);
+  solution.residual = std::accumulate(y.cbegin(), y.cend(), 0.0,
+                                      [] (const auto& s, const auto& v) { return s + v < 0.0 ? std::fabs(v) : 0.0; });
   return solution;
 }

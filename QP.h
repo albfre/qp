@@ -8,23 +8,23 @@ namespace QP {
   using Matrix = MathUtil::Matrix;
 
   struct Solution {
-    double objectiveValue;
+    double objectiveValue = 1e50;
+    double residual = 0.0;
     Vector x;
   };
 
-  double objectiveValue(const Matrix& H,
-                        const Vector& g,
+  double objectiveValue(const Matrix& Q,
+                        const Vector& c,
                         const Vector& x);
 
   /* Solve problem
-   * min 0.5 x' H x + g' x
+   * min 0.5 x' Q x + c' x
    * st  Ax >= b
    */
-  Solution solveQP(const Matrix& H,
-                   const Vector& g,
+  Solution solveQP(const Matrix& Q,
+                   const Vector& c,
                    const Matrix& A,
                    const Vector& b);
 }
-
 
 #endif //QP_H
