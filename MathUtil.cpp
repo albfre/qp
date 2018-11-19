@@ -7,11 +7,15 @@ namespace MathUtil {
   void vectorMinusEqVector(Vector& r, const Vector& v) { vectorEqOpSelfVector(r, v, std::minus<double>()); }
   void vectorPlusEqVector(Vector& r, const Vector& v) { vectorEqOpSelfVector(r, v, std::plus<double>()); }
   void vectorPlusEqScalarTimesVector(Vector& r, const double scalar, const Vector& v) { vectorEqOpSelfVector(r, v, [scalar] (const auto& rx, const auto& vx) { return rx + scalar * vx; }); }
+  void vectorTimesEqVector(Vector& r, const Vector& v) { vectorEqOpSelfVector(r, v, std::multiplies<double>()); }
+  void vectorDivEqMinusVector(Vector& r, const Vector& v) { vectorEqOpSelfVector(r, v, [] (const auto& ri, const auto& vi) { assert(vi > 0.0); return -ri / vi; }); }
 
   Matrix matrixTranspose(const Matrix& m)
   {
     const auto ySize = m.size();
-    assert(ySize > 0);
+    if (ySize == 0) {
+      return m;
+    }
     const auto xSize = m.front().size();
     Matrix mT(xSize, Vector(ySize));
     for (size_t i = 0; i < ySize; ++i) {

@@ -19,29 +19,31 @@ int main(int argc, const char* argv[])
 {
   const size_t xSize = 1000;
   const size_t ySize = 200;
-  MathUtil::Matrix H(xSize, MathUtil::Vector(xSize));
-  MathUtil::Vector g(xSize, 1);
+  MathUtil::Matrix Q(xSize, MathUtil::Vector(xSize));
+  MathUtil::Vector c(xSize, 1);
   for (size_t i = 0; i < xSize; ++i) {
-    H[i][i] = 3 * xSize;
-    g[i] = i;
+    Q[i][i] = 3 * xSize;
+    c[i] = i;
   }
   for (size_t i = 0; i < xSize; ++i) {
     for (size_t j = i + 1 ; j < xSize; ++j) {
-      H[i][j] = H[j][i] = i + j;
+      Q[i][j] = Q[j][i] = i + j;
     }
   }
+  MathUtil::Matrix A(0, QP::Vector(0));
+  MathUtil::Vector b(0);
 
-  MathUtil::Matrix A(ySize, QP::Vector(xSize));
-  MathUtil::Vector b(ySize);
+  MathUtil::Matrix C(ySize, QP::Vector(xSize));
+  MathUtil::Vector d(ySize);
   for (size_t i = 0; i < ySize; ++i) {
     for (size_t j = 0; j < xSize; ++j) {
-      A[i][j] = i - j;
+      C[i][j] = i - j;
     }
-    b[i] = i;
+    d[i] = i;
   }
-  const auto s = QP::solveQP(H, g, A, b);
-  print(s.x);
+  const auto s = QP::solveQP(Q, c, A, b, C, d);
+//  print(s.x);
   std::cout << "Objective value: " << s.objectiveValue << std::endl;
-  std::cout << "Residual: " << s.residual << std::endl;
+  std::cout << "Infeasibility: " << s.infeasibility << std::endl;
   return 0;
 }

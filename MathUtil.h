@@ -36,6 +36,8 @@ namespace MathUtil {
   void vectorMinusEqVector(Vector& r, const Vector& v);
   void vectorPlusEqVector(Vector& r, const Vector& v);
   void vectorPlusEqScalarTimesVector(Vector& r, const double scalar, const Vector& v);
+  void vectorTimesEqVector(Vector& r, const Vector& v);
+  void vectorDivEqMinusVector(Vector& r, const Vector& v);
 
   Matrix matrixTranspose(const Matrix& m);
 

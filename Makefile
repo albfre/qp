@@ -11,7 +11,7 @@ TESTSRC = $(TEST).cpp
 all: lapack product test
 
 product: $(SRCS) \
-; $(CC) $(CFLAGS) -c $(LAPACK) $(MATH) $(SRCS)
+; $(CC) $(CFLAGS) -c $(MATH) $(SRCS)
 
 math: $(MATH) \
 ; $(CC) $(CFLAGS) -c $(MATH)
