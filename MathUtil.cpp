@@ -4,6 +4,7 @@
 #include "MathUtil.h"
 
 namespace MathUtil {
+  void vectorPlusEqScalar(Vector& r, const double s) { for (auto& ri : r) { ri += s; } }
   void vectorMinusEqVector(Vector& r, const Vector& v) { vectorEqOpSelfVector(r, v, std::minus<double>()); }
   void vectorPlusEqVector(Vector& r, const Vector& v) { vectorEqOpSelfVector(r, v, std::plus<double>()); }
   void vectorPlusEqScalarTimesVector(Vector& r, const double scalar, const Vector& v) { vectorEqOpSelfVector(r, v, [scalar] (const auto& rx, const auto& vx) { return rx + scalar * vx; }); }

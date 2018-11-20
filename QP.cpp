@@ -43,7 +43,8 @@ namespace {
   // rzs = ZSe - sigma * mu e
   Vector computeRzs(const Vector& z, const Vector& s, const double sigmaTimesMu) {
     auto rzs = z;
-    MathUtil::vectorEqOpSelfVector(rzs, s, [sigmaTimesMu] (const auto& zi, const auto& si) { return zi * si - sigmaTimesMu; });
+    MathUtil::vectorTimesEqVector(rzs, s);
+    MathUtil::vectorPlusEqScalar(rzs, -sigmaTimesMu);
     return rzs;
   }
 
@@ -116,18 +117,17 @@ namespace {
     std::transform(dz.cbegin(), dz.cend(), dz.begin(), std::negate<double>());
 
     // Compute ds = -Zinv (rzs + S dz)
-    // Compute ds = C dx + rC
-//    auto ds = dz;
-//    MathUtil::vectorTimesEqVector(ds, s);
-//    MathUtil::vectorPlusEqVector(dz, rzs);
-//    MathUtil::vectorDivEqMinusVector(dz, z);
-    auto ds = MathUtil::matrixTimesVector(C, dx);
-    MathUtil::vectorPlusEqVector(ds, rC);
+    auto ds = dz;
+    MathUtil::vectorTimesEqVector(ds, s); // S dz
+    MathUtil::vectorPlusEqVector(ds, rzs); // rzs + S dz
+    MathUtil::vectorDivEqMinusVector(ds, z); // -Zinv (rzs + S dz)
+    //auto ds = MathUtil::matrixTimesVector(C, dx);
+    //MathUtil::vectorPlusEqVector(ds, rC);
 
     return std::make_tuple(dx, dy, dz, ds);
   }
 
-  double lineSearch(const Vector& z, const Vector& dz, const Vector& s, const Vector& ds) {
+  double maxStep(const Vector& z, const Vector& dz, const Vector& s, const Vector& ds) {
     const auto size = z.size();
     assert(dz.size() == size);
     assert(s.size() == size);
@@ -143,9 +143,125 @@ namespace {
       }
     }
     if (alpha < 1e-15) {
-      assert( false );
+      assert(false);
     }
     return alpha;
+  }
+
+  void takeStep(Vector& x, Vector& y, Vector& z, Vector& s,
+                const Vector& dx, const Vector& dy, const Vector& dz, const Vector& ds,
+                const double alpha) {
+    MathUtil::vectorPlusEqScalarTimesVector(x, alpha, dx);
+    MathUtil::vectorPlusEqScalarTimesVector(y, alpha, dy);
+    MathUtil::vectorPlusEqScalarTimesVector(z, alpha, dz);
+    MathUtil::vectorPlusEqScalarTimesVector(s, alpha, ds);
+  }
+
+  auto startingPoint1(Matrix& M,
+                     const Matrix& Q,
+                     const Vector& c,
+                     const Matrix& A,
+                     const Vector& b,
+                     const Matrix& C,
+                     const Vector& d) {
+    const auto matrixMax = [] (const Matrix& M) {
+      auto mMax = std::numeric_limits<double>::lowest();
+      for (const auto& m : M) {
+        mMax = std::max(mMax, *std::max_element(m.cbegin(), m.cend()));
+      }
+      return mMax;
+    };
+    auto maxValue = *std::max_element(c.cbegin(), c.cend());
+    maxValue = std::max(maxValue, matrixMax(Q));
+    if (!b.empty()) {
+      maxValue = std::max(maxValue, *std::max_element(b.cbegin(), b.cend()));
+      maxValue = std::max(maxValue, matrixMax(A));
+    }
+    if (!d.empty()) {
+      maxValue = std::max(maxValue, *std::max_element(d.cbegin(), d.cend()));
+      maxValue = std::max(maxValue, matrixMax(C));
+    }
+
+    const auto sqrtMax = std::sqrt(maxValue);
+    Vector x(c.size(), 0.0);
+    Vector y(b.size(), 0.0);
+    Vector z(d.size(), sqrtMax);
+    Vector s(d.size(), sqrtMax);
+    const auto AT = MathUtil::matrixTranspose(A);
+    const auto CT = MathUtil::matrixTranspose(C);
+    const auto rQ = computeRQ(Q, AT, CT, c, x, y, z);
+    const auto rA = computeRA(A, b, x);
+    const auto rC = computeRC(C, d, x, s);
+    const auto rzs = computeRzs(z, s, 0.0);
+    Vector factorization;
+    std::vector<int> piv(M.size());
+    updateMatrix(M, s, z);
+    LinearSolver::factorizeSymmetricIndefinite(M, factorization, piv);
+    const auto [dx, dy, dz, ds] = computeSearchDirection(M, C, factorization, piv, rQ, rA, rC, rzs, y, z, s);
+    takeStep(x, y, z, s, dx, dy, dz, ds, 1.0);
+    const auto zMin = *std::min_element(z.cbegin(), z.cend());
+    const auto sMin = *std::min_element(s.cbegin(), s.cend());
+    const auto shift = 1e3 + 2 * std::max(0.0, std::max(-zMin, -sMin));
+    MathUtil::vectorPlusEqScalar(z, shift);
+    MathUtil::vectorPlusEqScalar(s, shift);
+
+    return std::make_tuple(x, y, z, s);
+  }
+
+  auto startingPoint2(Matrix& M,
+                     const Matrix& Q,
+                     const Vector& c,
+                     const Matrix& A,
+                     const Vector& b,
+                     const Matrix& C,
+                     const Vector& d) {
+    const auto matrixMax = [] (const Matrix& M) {
+      auto mMax = std::numeric_limits<double>::lowest();
+      for (const auto& m : M) {
+        mMax = std::max(mMax, *std::max_element(m.cbegin(), m.cend()));
+      }
+      return mMax;
+    };
+    auto maxValue = *std::max_element(c.cbegin(), c.cend());
+    maxValue = std::max(maxValue, matrixMax(Q));
+    if (!b.empty()) {
+      maxValue = std::max(maxValue, *std::max_element(b.cbegin(), b.cend()));
+      maxValue = std::max(maxValue, matrixMax(A));
+    }
+    if (!d.empty()) {
+      maxValue = std::max(maxValue, *std::max_element(d.cbegin(), d.cend()));
+      maxValue = std::max(maxValue, matrixMax(C));
+    }
+
+    auto delta = 1e1;
+    auto beta1 = 1e2;
+
+    const auto sqrtMax = std::sqrt(maxValue);
+    Vector x(c.size(), 0.0);
+    Vector y(b.size(), 0.0);
+    Vector z(d.size(), delta);
+    Vector s(d.size(), delta);
+/*
+    const auto AT = MathUtil::matrixTranspose(A);
+    const auto CT = MathUtil::matrixTranspose(C);
+    const auto rQ = computeRQ(Q, AT, CT, c, x, y, z);
+    const auto rA = computeRA(A, b, x);
+    const auto rC = computeRC(C, d, x, s);
+    const auto rzs = computeRzs(z, s, 0.0);
+    Vector factorization;
+    std::vector<int> piv(M.size());
+    updateMatrix(M, s, z);
+    LinearSolver::factorizeSymmetricIndefinite(M, factorization, piv);
+    const auto [dx, dy, dz, ds] = computeSearchDirection(M, C, factorization, piv, rQ, rA, rC, rzs, y, z, s);
+
+    auto mu = MathUtil::dot(z,s) / z.size();
+    for (size_t i = 0; i < s.size(); ++i) {
+      s[i] = std::max(beta1, std::fabs(s[i] + ds[i]));
+      z[i] = std::max(beta1, std::fabs(z[i] + dz[i]));
+    }
+
+*/
+    return std::make_tuple(x, y, z, s);
   }
 }
 
@@ -160,8 +276,7 @@ QP::Solution QP::solveQP(const Matrix& Q,
                          const Matrix& A,
                          const Vector& b,
                          const Matrix& C,
-                         const Vector& d)
-{
+                         const Vector& d) {
   // Preconditions
   const auto nx = c.size();
   const auto ny = b.size();
@@ -198,15 +313,15 @@ QP::Solution QP::solveQP(const Matrix& Q,
   }
 
   // Initialize x, y, z, s
-  Vector x(nx, 1.0);
-  Vector y(ny, 1.0);
+  //auto [x, y, z, s] = startingPoint1(M, Q, c, A, b, C, d);
+  Vector x(nx, 0);
+  Vector y(ny, 0.0);
+  Vector s(nz, 1.0);
   Vector z(nz, 1.0);
-  auto s = computeRC(C, d, x, Vector(nz));
-  MathUtil::vectorEqOpSelfVector(s, s, [] (const auto& a, const auto& d) { return std::max(1e-3, d); });
 
   Vector factorization;
-  std::vector<int> piv(size);
-  const auto fractionToBoundary = 0.99;
+  std::vector<int> piv(M.size());
+  const auto fractionToBoundary = 0.995;
 
   for (size_t k = 0; k < 100; ++k ) {
     updateMatrix(M, s, z);
@@ -218,7 +333,7 @@ QP::Solution QP::solveQP(const Matrix& Q,
     // Compute affine scaling step
     const auto rzsAff = computeRzs(z, s, 0.0);
     const auto [dxAff, dyAff, dzAff, dsAff] = computeSearchDirection(M, C, factorization, piv, rQ, rA, rC, rzsAff, y, z, s);
-    const auto alphaAff = lineSearch(z, dzAff, s, dsAff);
+    const auto alphaAff = maxStep(z, dzAff, s, dsAff);
 
     // Compute zAff, sAff
     auto zAff = z;
@@ -234,19 +349,16 @@ QP::Solution QP::solveQP(const Matrix& Q,
     auto rzsCentCorr = computeRzs(z, s, sigma * mu);
     MathUtil::vectorPlusEqVector(rzsCentCorr, rzsCorr);
 
-
     const auto [dx, dy, dz, ds] = computeSearchDirection(M, C, factorization, piv, rQ, rA, rC, rzsCentCorr, y, z, s);
-    const auto alpha = fractionToBoundary * lineSearch(z, dz, s, ds);
+    const auto alpha = fractionToBoundary * maxStep(z, dz, s, ds);
 
     // Update x, y, z, s
-    MathUtil::vectorPlusEqScalarTimesVector(x, alpha, dx);
-    MathUtil::vectorPlusEqScalarTimesVector(y, alpha, dy);
-    MathUtil::vectorPlusEqScalarTimesVector(z, alpha, dz);
-    MathUtil::vectorPlusEqScalarTimesVector(s, alpha, ds);
+    takeStep(x, y, z, s, dx, dy, dz, ds, alpha);
     const auto gap = MathUtil::dot(z, s) / nz;
+    const auto infeasibility = computeInfeasibility(A, C, b, d, x);
 
-    std::cout << k << ". alphaAff: " << alphaAff << ", alpha: " << alpha << ", gap: " << gap << ", obj: " << objectiveValue(Q, c, x) << std::endl;
-    if (gap < 1e-12) {
+    std::cout << k << ". alphaAff: " << alphaAff << ", alpha: " << alpha << ", gap: " << gap << ", obj: " << objectiveValue(Q, c, x) << ", infeas: " << infeasibility << std::endl;
+    if (gap < 1e-12 && infeasibility < 1e-12) {
       break;
     }
   }

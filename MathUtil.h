@@ -33,9 +33,10 @@ namespace MathUtil {
     }
   }
 
+  void vectorPlusEqScalar(Vector& r, double scalar);
   void vectorMinusEqVector(Vector& r, const Vector& v);
   void vectorPlusEqVector(Vector& r, const Vector& v);
-  void vectorPlusEqScalarTimesVector(Vector& r, const double scalar, const Vector& v);
+  void vectorPlusEqScalarTimesVector(Vector& r, double scalar, const Vector& v);
   void vectorTimesEqVector(Vector& r, const Vector& v);
   void vectorDivEqMinusVector(Vector& r, const Vector& v);
 
