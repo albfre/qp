@@ -28,7 +28,12 @@ namespace QP {
                    const Matrix& A,
                    const Vector& b,
                    const Matrix& C,
-                   const Vector& d);
+                   const Vector& d,
+                   bool printProgress = false);
+
+  Solution solveQP(const Matrix& Q,
+                   const Vector& c,
+                   const Vector& lb);
 }
 
 #endif //QP_H

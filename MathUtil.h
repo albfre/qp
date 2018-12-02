@@ -24,6 +24,27 @@ namespace MathUtil {
     return r;
   }
 
+  inline Matrix matrixTimesMatrix(const Matrix& m1, const Matrix& m2)
+  {
+    const auto m = m1.size();
+    const auto n = m2.size();
+    assert(m > 0);
+    assert(n > 0);
+    assert(m1.front().size() == n);
+    const auto p = m2.front().size();
+    Matrix mat(m, Vector(p));
+    for (size_t i = 0; i < m; ++i) {
+      const auto& v = m1[i];
+      for (size_t j = 0; j < p; ++j) {
+        for (size_t k = 0; k < n; ++k) {
+          mat[i][j] += v[k] * m2[k][j];
+        }
+      }
+    }
+
+    return mat;
+  }
+
   template<class Op>
   void vectorEqOpSelfVector(Vector& r, const Vector& v, const Op& op) {
     const auto size = r.size();
@@ -34,6 +55,8 @@ namespace MathUtil {
   }
 
   void vectorPlusEqScalar(Vector& r, double scalar);
+  void vectorTimesEqScalar(Vector& r, double scalar);
+
   void vectorMinusEqVector(Vector& r, const Vector& v);
   void vectorPlusEqVector(Vector& r, const Vector& v);
   void vectorPlusEqScalarTimesVector(Vector& r, double scalar, const Vector& v);

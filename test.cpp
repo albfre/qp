@@ -27,7 +27,7 @@ void solveLP() {
 
 int main(int argc, const char* argv[])
 {
-  const size_t xSize = 500;
+  const size_t xSize = 1000;
   const size_t ySize = 200;
   const auto print = false;
   MathUtil::Matrix Q(xSize, MathUtil::Vector(xSize));
@@ -56,7 +56,7 @@ int main(int argc, const char* argv[])
   MathUtil::Matrix C(ySize, QP::Vector(xSize));
   MathUtil::Vector d(ySize);
   for (size_t i = 0; i < ySize; ++i) {
-    for (size_t j = i; j < i + 3; ++j) {
+    for (size_t j = i; j < i + 4; ++j) {
       C[i][j] = static_cast<int>(i) - static_cast<int>(j);
     }
     d[i] = i;
@@ -70,7 +70,8 @@ int main(int argc, const char* argv[])
       std::cout << std::endl;
     }
   }
-  const auto s = QP::solveQP(Q, c, A, b, C, d);
+  const auto printProgress = true;
+  const auto s = QP::solveQP(Q, c, A, b, C, d, printProgress);
 //  print(s.x);
   std::cout << "Objective value: " << std::setprecision(17) << s.objectiveValue << std::endl;
   std::cout << "Infeasibility: " << s.infeasibility << std::endl;

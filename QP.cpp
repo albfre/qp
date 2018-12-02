@@ -215,33 +215,13 @@ namespace {
                      const Vector& b,
                      const Matrix& C,
                      const Vector& d) {
-    const auto matrixMax = [] (const Matrix& M) {
-      auto mMax = std::numeric_limits<double>::lowest();
-      for (const auto& m : M) {
-        mMax = std::max(mMax, *std::max_element(m.cbegin(), m.cend()));
-      }
-      return mMax;
-    };
-    auto maxValue = *std::max_element(c.cbegin(), c.cend());
-    maxValue = std::max(maxValue, matrixMax(Q));
-    if (!b.empty()) {
-      maxValue = std::max(maxValue, *std::max_element(b.cbegin(), b.cend()));
-      maxValue = std::max(maxValue, matrixMax(A));
-    }
-    if (!d.empty()) {
-      maxValue = std::max(maxValue, *std::max_element(d.cbegin(), d.cend()));
-      maxValue = std::max(maxValue, matrixMax(C));
-    }
-
     auto delta = 1e1;
-    auto beta1 = 1e2;
+    auto beta1 = 1e1;
 
-    const auto sqrtMax = std::sqrt(maxValue);
     Vector x(c.size(), 0.0);
     Vector y(b.size(), 0.0);
     Vector z(d.size(), delta);
     Vector s(d.size(), delta);
-/*
     const auto AT = MathUtil::matrixTranspose(A);
     const auto CT = MathUtil::matrixTranspose(C);
     const auto rQ = computeRQ(Q, AT, CT, c, x, y, z);
@@ -254,13 +234,11 @@ namespace {
     LinearSolver::factorizeSymmetricIndefinite(M, factorization, piv);
     const auto [dx, dy, dz, ds] = computeSearchDirection(M, C, factorization, piv, rQ, rA, rC, rzs, y, z, s);
 
-    auto mu = MathUtil::dot(z,s) / z.size();
     for (size_t i = 0; i < s.size(); ++i) {
       s[i] = std::max(beta1, std::fabs(s[i] + ds[i]));
       z[i] = std::max(beta1, std::fabs(z[i] + dz[i]));
     }
 
-*/
     return std::make_tuple(x, y, z, s);
   }
 }
@@ -273,10 +251,24 @@ double QP::objectiveValue(const Matrix& Q, const Vector& c, const Vector& x)
 
 QP::Solution QP::solveQP(const Matrix& Q,
                          const Vector& c,
+                         const Vector& lb) {
+  const auto nx = c.size();
+  Matrix C(nx, Vector(nx));
+  for (size_t i = 0; i < nx; ++i) {
+    C[i][i] = 1.0;
+  }
+  Matrix A;
+  Vector b;
+  return solveQP(Q, c, A, b, C, lb);
+}
+
+QP::Solution QP::solveQP(const Matrix& Q,
+                         const Vector& c,
                          const Matrix& A,
                          const Vector& b,
                          const Matrix& C,
-                         const Vector& d) {
+                         const Vector& d,
+                         const bool printProgress) {
   // Preconditions
   const auto nx = c.size();
   const auto ny = b.size();
@@ -313,11 +305,13 @@ QP::Solution QP::solveQP(const Matrix& Q,
   }
 
   // Initialize x, y, z, s
-  //auto [x, y, z, s] = startingPoint1(M, Q, c, A, b, C, d);
+  auto [x, y, z, s] = startingPoint2(M, Q, c, A, b, C, d);
+  /*
   Vector x(nx, 0);
   Vector y(ny, 0.0);
   Vector s(nz, 1.0);
   Vector z(nz, 1.0);
+  */
 
   Vector factorization;
   std::vector<int> piv(M.size());
@@ -357,7 +351,9 @@ QP::Solution QP::solveQP(const Matrix& Q,
     const auto gap = MathUtil::dot(z, s) / nz;
     const auto infeasibility = computeInfeasibility(A, C, b, d, x);
 
-    std::cout << k << ". alphaAff: " << alphaAff << ", alpha: " << alpha << ", gap: " << gap << ", obj: " << objectiveValue(Q, c, x) << ", infeas: " << infeasibility << std::endl;
+    if (printProgress) {
+      std::cout << k << ". alphaAff: " << alphaAff << ", alpha: " << alpha << ", gap: " << gap << ", obj: " << objectiveValue(Q, c, x) << ", infeas: " << infeasibility << std::endl;
+    }
     if (gap < 1e-12 && infeasibility < 1e-12) {
       break;
     }

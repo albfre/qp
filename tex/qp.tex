@@ -1,0 +1,111 @@
+\documentclass[a4paper]{paper}
+
+\usepackage[utf8x]{inputenc}  %swedish letters
+\usepackage[T1]{fontenc}      %svenska avstavningsregler o dyl
+\usepackage[swedish]{babel}   %svenskt dokument (datum, figurer)
+
+
+%\author{\Large }
+\author{}
+\date{}
+%\title{\Huge }
+\title{QP}
+\pagestyle{empty}
+
+\begin{document}
+\[
+\begin{array}{lc}
+\min & 0.5 x^T Q x + c^T x\\
+\mathrm{s.t.} & C x \geq d_1\\
+              & C x \leq d_2
+\end{array}
+\]
+
+Residuals
+\begin{eqnarray*}
+\left(\begin{array}{c}
+r_Q\\
+r_{C_1}\\
+r_{C_2}\\
+r_{z_1}\\
+r_{z_2}
+\end{array}\right)
+&=&
+\left(\begin{array}{c}
+Qx + c - C^T z_1 + C^T z_2\\
+Cx - s_1 - d_1\\
+Cx + s_2 - d_2\\
+Z_1 S_1 - \sigma \mu e\\
+Z_2 S_2 - \sigma \mu e
+\end{array}\right)
+\end{eqnarray*}
+
+Full system
+\begin{eqnarray*}
+\left(\begin{array}{ccccc}
+Q & C^T & C^T & 0 & 0\\
+C & 0   & 0   & I & 0\\
+C & 0   & 0   & 0 & I\\
+0 & -S_1 & 0   & -Z_1 & 0\\
+0 & 0   & S_2   & 0 & Z_2
+\end{array}\right)
+\left(\begin{array}{c}
+\Delta x\\
+-\Delta z_1\\
+\Delta z_2\\
+-\Delta s_1\\
+\Delta s_2
+\end{array}\right)
+&=&
+\left(\begin{array}{c}
+-r_Q\\
+-r_{C_1}\\
+-r_{C_2}\\
+-r_{z_1}\\
+-r_{z_2}
+\end{array}\right)
+\end{eqnarray*}
+
+First reduction
+\begin{eqnarray*}
+\left(\begin{array}{ccc}
+Q & C^T & C^T \\
+C & -Z_1^{-1} S_1  & 0   \\
+C & 0   & -Z_2^{-1}S_2 \\
+\end{array}\right)
+\left(\begin{array}{c}
+\Delta x\\
+-\Delta z_1\\
+\Delta z_2
+\end{array}\right)
+&=&
+\left(\begin{array}{c}
+-r_Q\\
+-r_{C_1} - Z_1^{-1} r_{z_1}\\
+-r_{C_2} + Z_2^{-1} r_{z_2}
+\end{array}\right)
+\end{eqnarray*}
+
+\[
+\begin{array}{c}
+\Delta s_1 = -Z_1^{-1} (r_{z_1} + S_1 \Delta z_1)\\
+\Delta s_2 = -Z_2^{-1} (r_{z_2} + S_2 \Delta z_2)
+\end{array}
+\]
+
+Second reduction
+\begin{eqnarray*}
+(Q + C^T (S_1^{-1} Z_1 + S_2^{-1} Z_2))C \Delta x
+&=&
+-r_Q + C^T (S_1^{-1}  Z_1 r_{C_1} + S_1^{-1} r_{z_1} - S_2^{-1} Z_2 r_{C_2} + S_2^{-1} r_{z_2})
+\end{eqnarray*}
+
+\[
+\begin{array}{c}
+\Delta s_1 = -Z_1^{-1} (r_{z_1} + S_1 \Delta z_1)\\
+\Delta s_2 = -Z_2^{-1} (r_{z_2} + S_2 \Delta z_2)\\
+\Delta z_1 = -S_1^{-1} Z_1 ( C \Delta x + r_{C_1} + Z_1^{-1} r_{z_1} )\\
+\Delta z_2 = S_2^{-1} Z_2 ( C \Delta x + r_{C_2} - Z_2^{-1} r_{z_2})
+\end{array}
+\]
+\end{document}
