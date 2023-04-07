@@ -1,5 +1,5 @@
 CC = g++
-CFLAGS = -g -std=c++17 -O2 -Wall -pedantic -llapack
+CFLAGS = -g -std=c++17 -O2 -Wall -pedantic -lblas -llapack
 FILE = QP
 SRCS = $(FILE).h $(FILE).cpp
 OBJS = $(FILE).o MathUtil.o LinearSolver.o
@@ -11,16 +11,16 @@ TESTSRC = $(TEST).cpp
 all: lapack product test
 
 product: $(SRCS) \
-; $(CC) $(CFLAGS) -c $(MATH) $(SRCS)
+; $(CC) -c $(MATH) $(SRCS) $(CFLAGS)
 
 math: $(MATH) \
-; $(CC) $(CFLAGS) -c $(MATH)
+; $(CC) -c $(MATH) $(CFLAGS)
 
 lapack: $(LAPACK) \
-; $(CC) $(CFLAGS) -c $(LAPACK)
+; $(CC) -c $(LAPACK) $(CFLAGS)
 
 test: $(TESTSRC) \
-; $(CC) $(CFLAGS) -o $(TEST) $(TESTSRC) $(OBJS)
+; $(CC) -o $(TEST) $(TESTSRC) $(OBJS) $(CFLAGS)
 
 clean: \
 ; $(RM) $(OBJS) $(TEST)
